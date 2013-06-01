@@ -9,7 +9,42 @@
 import time
 from burp2xml import burp_to_xml
 from optparse import OptionParser
-import xml.etree.ElementTree as ET
+from BaseHTTPServer import BaseHTTPRequestHandler
+from StringIO import StringIO
+from httplib import HTTPResponse
+
+class StringSocket(StringIO):
+    ''' StringSocket
+    provides interface necessary for HTTPResponse
+    to treat data from a string as if it came from a socket.
+    '''
+    
+    def makefile(self, *args, **kw):
+        return self
+
+def httpparse(str):
+    socket = StringSocket(str)
+    response = HTTPResponse(socket)
+    response.begin()
+
+    return response
+    
+class HTTPRequest(BaseHTTPRequestHandler):
+    '''HTTPRequest
+    provides code necessary to parse an HTTPRequest
+    from a string rather than a url
+    '''
+    
+    def __init__(self, request_text):
+        self.rfile = StringIO(request_text)
+        self.raw_requestline = self.rfile.readline()
+        self.error_code = self.error_message = None
+        self.parse_request()
+
+    def send_error(self, code, message):
+        self.error_code = code
+        self.error_message = message
+
 
 class Namespace: pass
 
@@ -18,6 +53,11 @@ def vprint(arg):
         print arg
 
 def main():
+    REQUEST_OPEN_TAG = '<request>'
+    REQUEST_CLOSE_TAG = '</request>'
+    RESPONSE_OPEN_TAG = '<response>'
+    RESPONSE_CLOSE_TAG = '</response>'
+    
     usage = ("%prog [options] burp-session-file\n"
              "  minese a burp session file for possible passwords\n"
              "  motiviated by digininja's cewl")
@@ -66,11 +106,26 @@ def main():
     else:
         vprint("Converting burp session file to xml")
         burp_xml_string = burp_to_xml(args[0])
-        vprint("Parsing xml file")
-        burp_tree = ET.fromstring(burp_xml_string)
-        del burp_xml_string # just in case that storage is needed
-        requests = burp_tree.findall('request')
-        print requests[0]
+
+        # First Get the Request
+        while 1:
+            rq_begin_index = burp_xml_string.find(REQUEST_OPEN_TAG)
+            if rq_begin_index < 0:
+                break
+            rq_end_index = burp_xml_string.find(REQUEST_CLOSE_TAG)
+            if rq_end_index < 0:
+                # throw exception for bad formatting
+                break
+            request_string = burp_xml_string[rq_begin_index +
+                                             len(REQUEST_OPEN_TAG):
+                                             rq_end_index]
+            
+            request = HTTPRequest(request_string)
+            print request.headers['Host'] + request.path
+            
+            burp_xml_string = burp_xml_string[rq_end_index +
+                                              len(REQUEST_CLOSE_TAG):]
+            
 
     
 if __name__ == '__main__':
