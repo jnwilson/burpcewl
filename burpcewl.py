@@ -1,7 +1,13 @@
 #! /usr/bin/env python
 # Apologies to digininja.
 #
-# jnw@cise.ufl.edu
+#
+# Depends on the following modules:
+#   burp2xml (jnwilson@github fork)
+#   ElementSoup
+#   python_magic
+#
+## jnw@cise.ufl.edu
 '''Use Burp Suite Professional's output to generate a password list
 
 '''
@@ -14,6 +20,9 @@ from StringIO import StringIO
 from httplib import HTTPResponse
 import ElementSoup
 import re
+import sys
+import magic
+import subprocess
 
 class StringSocket(StringIO):
     ''' StringSocket
@@ -46,11 +55,8 @@ class HTTPRequest(BaseHTTPRequestHandler):
         self.error_code = code
         self.error_message = message
 
-
-class Namespace: pass
-
 def vprint(arg):
-    if OPTIONS.VERBOSE:
+    if Options.VERBOSE:
         print arg
     
 def get_tag_content(str,tag):
@@ -73,15 +79,50 @@ def remove_CDATA(str):
             raise LookupError
     return str
 
-def html_get_words(str):
+def snarf(word):
+    if len(word) >= Options.min_word_length:
+        try:
+            Dictionary[word] = Dictionary[word] + 1
+        except:
+            Dictionary[word] = 1
+
+def html_get_words(str,url):
     tree = ElementSoup.parse(StringIO(str))   
     for text in tree.itertext():
-        for word in re.sub("[^\w]", " ",  text).split():
-            if len(word) >= OPTIONS.min_word_length:
-                try:
-                    DICTIONARY[word] = DICTIONARY[word] + 1
-                except:
-                    DICTIONARY[word] = 1
+        for word in re.findall("[\w]+", text):
+            snarf(word)
+
+def text_get_words(str):
+    for word in re.findall("[\w]+", str):
+        snarf(word)
+
+def check_plain(magic_str,url):
+    if not re.match('ASCII',magic_str):
+        raise TypeError
+
+def exif_snarf(body,field_names,url):
+    result = ''
+    try:
+        p = subprocess.Popen(['exiftool','-'], stdin = subprocess.PIPE,
+                             stdout=subprocess.PIPE, close_fds=True)
+        p.stdin.write(body)
+        (exif_output, errors) = p.communicate()
+        for name in field_names:
+            for line in iter(exif_output.splitlines()):
+                print line
+                m = re.match('[^:]*' + 'Comment' + '[^\n]*:([^\n]*)', line)
+                if m:
+                    for word in re.findall("[\w]+", m.group(1)):
+                        snarf(word)
+    except:
+        print 'Exiftool grab failed on ' + url
+    return result
+
+def image_get_words(body,url):
+    '''Assumes string is a coherent image file
+    '''
+    exif_snarf(body,['Comments'],url)
+
 def do_pass(str):
     pass
 
@@ -90,9 +131,11 @@ def main():
              "  mine a burp session file for possible passwords\n"
              "  motiviated by digininja's cewl\n")
     parser = OptionParser()
-    parser.add_option("-d","--depth",
-                      action="store_const", const=2, dest="depth",
-                      help="depth to spider to, default 2")
+## Depth doesn't make sense since we're not spidering
+#
+#    parser.add_option("-d","--depth",
+#                      action="store_const", const=2, dest="depth",
+#                      help="depth to spider to, default 2")
     parser.add_option("-m","--min_word_length",
                       action="store_const", const=3, dest="min_word_length",
                       help="minimum word length, default 3")
@@ -109,8 +152,11 @@ def main():
                       action="store", dest="meta_file",
                       help="output file for meta data")
     parser.add_option("-n","--no-words",
-                      action="store_true",dest="NO_WORDS", default=False,
+                      action="store_true",dest="no_words", default=False,
                       help="do not output the wordlist")
+    parser.add_option("-u","--urls",
+                      action="store_true", dest="list_urls", default=False,
+                      help="list visited urls to stderr")
     parser.add_option("-w","--write",
                       dest="output_file",
                       help="write the words to file")
@@ -124,11 +170,11 @@ def main():
                       action="store", dest="meta_temp_dir",
                       help="temporary directory used by exiftool when parsing file, default /tmp")
 
-    global OPTIONS
-    global DICTIONARY
+    global Options
+    global Dictionary
 
-    (OPTIONS,args) = parser.parse_args()
-    DICTIONARY = {}
+    (Options,args) = parser.parse_args()
+    Dictionary = {}
 
     if len(args) != 1:
         parser.print_usage()
@@ -140,18 +186,22 @@ def main():
             print 'burp2xml.py failed to parse session file'
             raise
 
+        content_verify_map = {
+            'text/plain':check_plain
+            }
+
         action_map = {
             'application/pdf':do_pass,
             'application/x-gzip':do_pass,
             'application/x-shockwave-flash':do_pass,
             'audio/x-wav':do_pass,
-            'image/jpeg':do_pass,
+            'image/jpeg':image_get_words,
             'image/gif':do_pass,
             'image/png':do_pass,
             'image/x-bitmap':do_pass,
             'text/css':do_pass,
             'text/html':html_get_words,
-            'text/plain':do_pass,
+            'text/plain':text_get_words,
         }
 
         # First Get the Request
@@ -159,7 +209,7 @@ def main():
             try:
                 (burp_xml_str, rq_str) = get_tag_content(burp_xml_str,'request')
                 request = HTTPRequest(rq_str)
-  #              print request.headers['Host'] + request.path
+
             except LookupError:
                 break
             try:
@@ -170,10 +220,18 @@ def main():
                 semi_index = type_str.find(';')
                 if semi_index >= 0:
                     type_str = type_str[0:semi_index].lower()
-#                print ' ' + type_str
                 body_str = response.read()
+                magic_str = magic.from_buffer(body_str)
+                url = request.headers['Host'] + request.path
+                if Options.list_urls:
+                    sys.stderr.write(url+':'+type_str+'('+magic_str+')\n')
                 try:
-                    action_map[type_str](body_str)
+                    # Check content.  If not verified, TypeError is returned
+                    try:
+                        content_verify_map[type_str](magic_str)
+                    except KeyError:
+                        pass
+                    action_map[type_str](body_str,url)
                 except:
                     pass
 
@@ -182,8 +240,9 @@ def main():
  #               print "Missing response"
                 raise 
 
-        for word in sorted(DICTIONARY.keys()):
-            print word + ':' + str(DICTIONARY[word])
+        if not Options.no_words:
+            for word in sorted(Dictionary.keys()):
+                print word + ':' + str(Dictionary[word])
     
 if __name__ == '__main__':
     main()
