@@ -13,16 +13,18 @@
 '''
 
 import time
-from burp2xml import burp_to_xml
 from optparse import OptionParser
 from BaseHTTPServer import BaseHTTPRequestHandler
 from StringIO import StringIO
 from httplib import HTTPResponse
-import ElementSoup
 import re
 import sys
-import magic
 import subprocess
+import operator
+
+from burp2xml import burp_to_xml
+import ElementSoup
+import magic
 
 class StringSocket(StringIO):
     ''' StringSocket
@@ -59,7 +61,7 @@ def vprint(arg):
     if Options.VERBOSE:
         print arg
     
-def get_tag_content(str,tag):
+def get_tag_content(str, tag):
             begin_index = str.find('<' + tag + '>')
             if begin_index < 0:
                 raise LookupError
@@ -86,7 +88,7 @@ def snarf(word):
         except:
             Dictionary[word] = 1
 
-def html_get_words(str,url):
+def html_get_words(str, url):
     tree = ElementSoup.parse(StringIO(str))   
     for text in tree.itertext():
         for word in re.findall("[\w]+", text):
@@ -96,11 +98,11 @@ def text_get_words(str):
     for word in re.findall("[\w]+", str):
         snarf(word)
 
-def check_plain(magic_str,url):
+def check_plain(magic_str, url):
     if not re.match('ASCII',magic_str):
         raise TypeError
 
-def exif_snarf(body,field_names,url):
+def exif_snarf(body, field_names, url):
     result = ''
     try:
         p = subprocess.Popen(['exiftool','-'], stdin = subprocess.PIPE,
@@ -109,7 +111,6 @@ def exif_snarf(body,field_names,url):
         (exif_output, errors) = p.communicate()
         for name in field_names:
             for line in iter(exif_output.splitlines()):
-                print line
                 m = re.match('[^:]*' + 'Comment' + '[^\n]*:([^\n]*)', line)
                 if m:
                     for word in re.findall("[\w]+", m.group(1)):
@@ -118,10 +119,15 @@ def exif_snarf(body,field_names,url):
         print 'Exiftool grab failed on ' + url
     return result
 
-def image_get_words(body,url):
+def pdf_get_words(body, url):
+    '''Assumes string is a coherent pdf document
+    '''
+    exif_snarf(body, ['Author'], url)
+
+def image_get_words(body, url):
     '''Assumes string is a coherent image file
     '''
-    exif_snarf(body,['Comments'],url)
+    exif_snarf(body, ['Comments'], url)
 
 def do_pass(str):
     pass
@@ -134,10 +140,12 @@ def main():
 ## Depth doesn't make sense since we're not spidering
 #
 #    parser.add_option("-d","--depth",
-#                      action="store_const", const=2, dest="depth",
+#                      action="store", type="int", default=2,
+#                      dest="depth",
 #                      help="depth to spider to, default 2")
     parser.add_option("-m","--min_word_length",
-                      action="store_const", const=3, dest="min_word_length",
+                      action="store", type="int", default=3,
+                      dest="min_word_length",
                       help="minimum word length, default 3")
     parser.add_option("-e","--email",
                       action="store_true",dest="EMAIL", default=False,
@@ -161,7 +169,7 @@ def main():
                       dest="output_file",
                       help="write the words to file")
     parser.add_option("-c","--count",
-                      action="store_true", dest="COUNT", default=False,
+                      action="store_true", dest="count", default=False,
                       help="show the count for each of the words found")
     parser.add_option("-v","--verbose",
                       action="store_true", dest="VERBOSE", default=False,
@@ -172,6 +180,7 @@ def main():
 
     global Options
     global Dictionary
+
 
     (Options,args) = parser.parse_args()
     Dictionary = {}
@@ -191,7 +200,7 @@ def main():
             }
 
         action_map = {
-            'application/pdf':do_pass,
+            'application/pdf':pdf_get_words,
             'application/x-gzip':do_pass,
             'application/x-shockwave-flash':do_pass,
             'audio/x-wav':do_pass,
@@ -241,8 +250,12 @@ def main():
                 raise 
 
         if not Options.no_words:
-            for word in sorted(Dictionary.keys()):
-                print word + ':' + str(Dictionary[word])
+            sorted_words = sorted(Dictionary.iteritems(),
+                                  key=operator.itemgetter(1), reverse=True)
+            for word_tuple in sorted_words:
+                sys.stdout.write(word_tuple[0])
+                sys.stdout.write((', ' + str(word_tuple[1])) if Options.count else '') 
+                sys.stdout.write('\n')
     
 if __name__ == '__main__':
     main()
