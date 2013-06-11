@@ -4,8 +4,8 @@
 #
 # Depends on the following modules:
 #   burp2xml (jnwilson@github fork)
-#   ElementSoup
 #   python_magic
+#   lxml
 #
 ## jnw@cise.ufl.edu
 '''Use Burp Suite Professional's output to generate a password list
@@ -23,7 +23,7 @@ import subprocess
 import operator
 
 from burp2xml import burp_to_xml
-import ElementSoup
+import lxml
 import magic
 
 
@@ -100,7 +100,7 @@ def snarf(word):
 
 
 def html_get_words(str, url):
-    tree = ElementSoup.parse(StringIO(str))
+    tree = lxml.htmlsoupparser.parse(StringIO(str))
     for text in tree.itertext():
         for word in re.findall("[\w]+", text):
             snarf(word)
@@ -151,6 +151,11 @@ def exif_snarf(body, field_names, url):
     except:
         print 'Exiftool grab failed on ' + url
     return result
+
+
+def doc_get_words(body, url):
+    exif_snarf(body, ['Author', 'LastSavedBy', 'Creator'], url)
+    # consider adding body snarf using
 
 
 def pdf_get_words(body, url):
@@ -239,7 +244,10 @@ def main():
         content_verify_map = {'text/plain': check_plain}
 
         action_map = {
+            'application/msword': doc_get_words,
             'application/pdf': pdf_get_words,
+            'application/vnd.openxmlformats-officedocument'
+            '.wordprocessingml.document': doc_get_words,
             'application/x-gzip': do_pass,
             'application/x-shockwave-flash': do_pass,
             'audio/x-wav': do_pass,
