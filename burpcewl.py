@@ -118,11 +118,18 @@ def check_plain(magic_str, url):
 
 def pdf_snarf(body, url):
     result = ''
+    if not pdf_snarf.OK:
+        return result
     try:
-        p = subprocess.Popen(['pdftotext', '-', '-'],
-                             stdin=subprocess.PIPE,
-                             stdout=subprocess.PIPE,
-                             close_fds=True)
+        try:
+            p = subprocess.Popen(['pdftotext', '-', '-'],
+                                 stdin=subprocess.PIPE,
+                                 stdout=subprocess.PIPE,
+                                 close_fds=True)
+        except:
+            pdf_snarf.OK = False
+            sys.stderr.write('Unable to read pdf text.\n')
+            return result
         p.stdin.write(body)
         (text_output, errors) = p.communicate()
         for line in iter(text_output.splitlines()):
@@ -131,15 +138,23 @@ def pdf_snarf(body, url):
     except:
         print 'pdftotext grab failed on ' + url
     return result
+pdf_snarf.OK = True
 
 
 def exif_snarf(body, field_names, url):
     result = ''
+    if not exif_snarf.OK:
+        return result
     try:
-        p = subprocess.Popen(['exiftool', '-'],
-                             stdin=subprocess.PIPE,
-                             stdout=subprocess.PIPE,
-                             close_fds=True)
+        try:
+            p = subprocess.Popen(['exiftool', '-'],
+                                 stdin=subprocess.PIPE,
+                                 stdout=subprocess.PIPE,
+                                 close_fds=True)
+        except:
+            exif_snarf.OK = False
+            sys.stderr.write('Unable to grab exif data.\n')
+            return result
         p.stdin.write(body)
         (exif_output, errors) = p.communicate()
         for name in field_names:
@@ -151,6 +166,7 @@ def exif_snarf(body, field_names, url):
     except:
         print 'Exiftool grab failed on ' + url
     return result
+exif_snarf.OK = True
 
 
 def doc_get_words(body, url):
@@ -226,7 +242,6 @@ def main():
 
     global Options
     global Dictionary
-
 
     (Options, args) = parser.parse_args()
     Dictionary = {}
