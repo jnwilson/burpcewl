@@ -2,6 +2,8 @@
 from ez_setup import use_setuptools
 use_setuptools()
 
+from setuptools import setup
+
 setup(name='burpcewl',
       version='1.0',
       description='Burp session file password grabber',
