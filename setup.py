@@ -12,11 +12,12 @@ setup(name='burpcewl',
       py_modules=['burpcewl'],
       install_requires=[
           'burp2xml',
-          'lxml',
+          'bs4',
           'python-magic',
        ],
       dependency_links=[
           'https://github.com/jnwilson/burp2xml/tarball/master#egg=burp2xml',
+          'http://www.crummy.com/software/BeautifulSoup/bs4/download/4.2/beautifulsoup4-4.2.1.tar.gz#egg=bs4',
           'https://github.com/ahupp/python-magic/tarball/master#egg=python-magic',
         ],
       classifiers=[

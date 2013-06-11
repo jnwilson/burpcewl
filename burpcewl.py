@@ -23,7 +23,7 @@ import subprocess
 import operator
 
 from burp2xml import burp_to_xml
-import lxml
+from bs4 import BeautifulSoup
 import magic
 
 
@@ -99,16 +99,14 @@ def snarf(word):
             Dictionary[word] = 1
 
 
-def html_get_words(str, url):
-    tree = lxml.htmlsoupparser.parse(StringIO(str))
-    for text in tree.itertext():
-        for word in re.findall("[\w]+", text):
-            snarf(word)
-
-
 def text_get_words(str):
     for word in re.findall("[\w]+", str):
         snarf(word)
+
+
+def html_get_words(str, url):
+    soup = BeautifulSoup(str)
+    text_get_words(soup.getText())
 
 
 def check_plain(magic_str, url):
@@ -128,7 +126,7 @@ def pdf_snarf(body, url):
                                  close_fds=True)
         except:
             pdf_snarf.OK = False
-            sys.stderr.write('Unable to read pdf text.\n')
+            sys.stderr.write('Unable to read pdf text: pdftotext not executable.\n')
             return result
         p.stdin.write(body)
         (text_output, errors) = p.communicate()
@@ -153,7 +151,7 @@ def exif_snarf(body, field_names, url):
                                  close_fds=True)
         except:
             exif_snarf.OK = False
-            sys.stderr.write('Unable to grab exif data.\n')
+            sys.stderr.write('Unable to grab exif data: exiftool not executable.\n')
             return result
         p.stdin.write(body)
         (exif_output, errors) = p.communicate()
