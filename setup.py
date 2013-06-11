@@ -13,7 +13,7 @@ setup(name='burpcewl',
       install_requires=[
           'burp2xml',
           'lxml',
-          'magic',
+          'python-magic',
        ],
       dependency_links=[
           'https://github.com/jnwilson/burp2xml/tarball/master#egg=burp2xml',
