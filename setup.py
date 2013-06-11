@@ -1,6 +1,6 @@
 #! /usr/bin/env python
-import os
-from setuptools import setup
+from ez_setup.py import use_setuptools
+use_setuptools()
 
 setup(name='burpcewl',
       version='1.0',
