@@ -271,6 +271,7 @@ def main():
             'text/css': do_pass,
             'text/html': html_get_words,
             'text/plain': text_get_words,
+            'none': do_pass,
         }
 
         # First Get the Request
@@ -287,13 +288,15 @@ def main():
                                                           'response')
                 rsp_str = remove_CDATA(rsp_str)
                 response = http_parse(rsp_str)
-                type_str = response.getheader('Content-Type')
+                url = request.headers['Host'] + request.path
+                type_str = response.getheader('Content-Type','none')
+                if type_str == 'none':
+                    sys.stderr.write('Document has no content-type ' + url + '\n')
                 semi_index = type_str.find(';')
                 if semi_index >= 0:
                     type_str = type_str[0:semi_index].lower()
                 body_str = response.read()
                 magic_str = magic.from_buffer(body_str)
-                url = request.headers['Host'] + request.path
                 if Options.list_urls:
                     sys.stderr.write(url + ':' + type_str + '(' +
                                      magic_str + ')\n')
