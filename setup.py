@@ -12,6 +12,7 @@ setup(name='burpcewl',
       py_modules=['burpcewl'],
       install_requires=[
           'burp2xml',
+          'lxml',
           'beautifulsoup4',
           'python-magic',
        ],

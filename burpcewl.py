@@ -23,6 +23,7 @@ import subprocess
 import operator
 
 from burp2xml import burp_to_xml
+import lxml
 from bs4 import BeautifulSoup
 import magic
 
@@ -105,7 +106,7 @@ def text_get_words(str):
 
 
 def html_get_words(str, url):
-    soup = BeautifulSoup(str)
+    soup = BeautifulSoup(str, 'lxml')
     text_get_words(soup.getText())
 
 
@@ -126,7 +127,8 @@ def pdf_snarf(body, url):
                                  close_fds=True)
         except:
             pdf_snarf.OK = False
-            sys.stderr.write('Unable to read pdf text: pdftotext not executable.\n')
+            sys.stderr.write('Unable to read pdf text: '
+                             'pdftotext not executable.\n')
             return result
         p.stdin.write(body)
         (text_output, errors) = p.communicate()
@@ -151,7 +153,8 @@ def exif_snarf(body, field_names, url):
                                  close_fds=True)
         except:
             exif_snarf.OK = False
-            sys.stderr.write('Unable to grab exif data: exiftool not executable.\n')
+            sys.stderr.write('Unable to grab exif data: '
+                             'exiftool not executable.\n')
             return result
         p.stdin.write(body)
         (exif_output, errors) = p.communicate()
@@ -243,6 +246,7 @@ def main():
 
     (Options, args) = parser.parse_args()
     Dictionary = {}
+    untyped_documents = 0
 
     if len(args) != 1:
         parser.print_usage()
@@ -288,10 +292,14 @@ def main():
                                                           'response')
                 rsp_str = remove_CDATA(rsp_str)
                 response = http_parse(rsp_str)
-                url = request.headers['Host'] + request.path
-                type_str = response.getheader('Content-Type','none')
+                try:
+                    url = request.headers['Host'] + request.path
+                except:
+                    url = '?!Unknown url!?'
+                type_str = response.getheader('Content-Type', 'none')
                 if type_str == 'none':
-                    sys.stderr.write('Document has no content-type ' + url + '\n')
+                    vprint('Document has no content-type ' + url + '\n')
+                    untyped_documents = untyped_documents + 1
                 semi_index = type_str.find(';')
                 if semi_index >= 0:
                     type_str = type_str[0:semi_index].lower()
@@ -323,6 +331,9 @@ def main():
                 sys.stdout.write((', ' + str(word_tuple[1]))
                                  if Options.count else '')
                 sys.stdout.write('\n')
+        if untyped_documents > 0:
+            sys.stderr.write('Ignored ' + str(untyped_documents) +
+                             ' documents with missing Content-Type Header')
 
 if __name__ == '__main__':
     main()
